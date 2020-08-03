@@ -1,5 +1,6 @@
-//As using admin macaroon, limited exposure of funds is reccomended - this project used Zap desktop wallet as it has neutrino LND https://docs.zaphq.io/docs-desktop-neutrino-connect
-//In terminal, with Zap running run *ssh -R SOME-NAME.serveo.net:3010:localhost:8180 serveo.net* (replace SOME-NAME, see line 25)
+//As using plugin sparko, limited exposure of funds is reccomended - this project used c-lightning with sparko plugin.
+//https://github.com/ElementsProject/lightning
+//https://github.com/fiatjaf/lightningd-gjson-rpc/tree/master/cmd/sparko
 #include <WiFiClientSecure.h>
 #include <ArduinoJson.h> 
 #include <M5Stack.h> 
@@ -23,9 +24,10 @@ char wifiPASS[] = "YOUR-WIFI-PASS";
 const char* gifthost = "api.lightning.gifts";
 const int httpsPort = 443;
 
-const char* lndhost = "SOME-NAME.serveo.net"; //in terminal run ssh -R SOME-NAME.serveo.net:3010:localhost:8180 serveo.net
-String adminmacaroon = "YOUR-LND-ADMIN-MACAROON";
-const int lndport = 3010;
+//enter your sparko details
+const char* sparkohost = "YOUR-SPARKO-HOST";
+String xaccess = "YOUR-ACCESS-TOKEN";
+const int sparkoport = 9737;
 
 
 void setup() {
@@ -95,7 +97,7 @@ void loop() {
      M5.Lcd.setTextSize(2);
      M5.Lcd.setTextColor(TFT_RED);
      M5.Lcd.println("More sats in "+ String(i) +" min");
-     delay(60000);
+     delay(3000);
   }
 spent = false;
 }
@@ -145,9 +147,9 @@ void create_gift(){
 void nodecheck(){
   bool checker = false;
   while(!checker){
-  WiFiClientSecure client;
+  WiFiClient client;
 
-  if (!client.connect(lndhost, lndport)){
+  if (!client.connect(sparkohost, sparkoport)){
 
     M5.Lcd.fillScreen(BLACK);
      M5.Lcd.setCursor(65, 80);
@@ -165,16 +167,16 @@ void nodecheck(){
 
 
 void makepayment(){
-  String memo = "Memo-";
-  WiFiClientSecure client;
-  if (!client.connect(lndhost, lndport)){
+
+  WiFiClient client;
+  if (!client.connect(sparkohost, sparkoport)){
     return;
   }
-  String topost = "{\"payment_request\": \""+ giftinvoice +"\"}";
-  client.print(String("POST ")+ "https://" + lndhost +":"+ String(lndport) +"/v1/channels/transactions HTTP/1.1\r\n" +
-               "Host: "  + lndhost +":"+ String(lndport) +"\r\n" +
+  String topost = "{\"method\": \"pay\", \"params\": [ \""+ giftinvoice +"\"]}";
+  client.print(String("POST ")+ "http://" + sparkohost +":"+ String(sparkoport) +"/rpc HTTP/1.1\r\n" +
+               "Host: "  + sparkohost +":"+ String(sparkoport) +"\r\n" +
                "User-Agent: ESP322\r\n" +
-               "Grpc-Metadata-macaroon:" + adminmacaroon + "\r\n" +
+               "X-Access:" + xaccess + "\r\n" +
                "Content-Type: application/json\r\n" +
                "Connection: close\r\n" +
                "Content-Length: " + topost.length() + "\r\n" +
@@ -182,6 +184,7 @@ void makepayment(){
                topost + "\n");
 
   String line = client.readStringUntil('\n');
+  Serial.println("****** makepayment *******");
   Serial.println(line);
   while (client.connected()) {
     String line = client.readStringUntil('\n');
@@ -190,6 +193,7 @@ void makepayment(){
     }
   }  
   String content = client.readStringUntil('\n');
+  Serial.println(content);
   client.stop(); 
 }
 
@@ -199,7 +203,7 @@ void checkgiftstatus(){
   if (!client.connect(gifthost, httpsPort)) {
     return;
   }
-  String url = "/status/" + giftid;
+  String url = "/gift/" + giftid;
   client.print(String("GET ") + url + " HTTP/1.1\r\n" +
                "Host: " + gifthost + "\r\n" +
                "User-Agent: ESP32\r\n" +
@@ -216,9 +220,9 @@ void checkgiftstatus(){
   const size_t capacity = JSON_OBJECT_SIZE(1) + 40;
   DynamicJsonDocument doc(capacity);
   deserializeJson(doc, line);
-  const char* giftstatuss = doc["status"]; 
+  const char* giftstatuss = doc["chargeStatus"]; 
   giftstatus = giftstatuss;
-  
+  Serial.println("giftstatus " + giftstatus);
 }
 
 void checkgift(){
@@ -245,6 +249,7 @@ void checkgift(){
   DynamicJsonDocument doc(capacity);  
   deserializeJson(doc, line);
   spent = doc["spent"]; 
+  Serial.println("spent " + spent);
 }
 
 
